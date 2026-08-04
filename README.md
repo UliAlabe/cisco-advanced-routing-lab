@@ -173,3 +173,48 @@ show access-lists                         # Ver reglas y conteo de paquetes bloq
 show ip protocols                         # Resumen del motor OSPF e interfaces pasivas
 show ip ospf interface [nombre_interfaz]  # Validar temporizadores y autenticación MD5
 ```
+---
+
+## 8. Telefonía IP (VoIP y CME)
+Configuración de Call Manager Express, puertos de voz y enrutamiento de llamadas inter-sucursal.
+
+> 📞 **Nota sobre DHCP y TFTP:**
+> Para que los teléfonos IP funcionen, el servidor DHCP debe entregar la **Opción 150 (TFTP Server)** apuntando a la IP donde el router escucha el servicio de telefonía. Además, el `ip helper-address` debe estar aplicado en la SVI de la VLAN de Voz.
+
+```text
+# --- Activación de Licencia UC (Routers Serie 2900) ---
+license boot module c2900 technology-package uck9 # Activa el módulo de Comunicaciones Unificadas (requerido para VoIP)
+exit                                              # Sale al modo privilegiado
+write memory                                      # Guarda los cambios obligatoriamente
+reload                                            # Reinicia el router para que la licencia surta efecto
+
+# --- Configuración de Puertos para Teléfonos IP (Switch Capa 2) ---
+interface FastEthernet0/1
+ switchport mode access                           # Fuerza el puerto a modo acceso
+ switchport access vlan [número_vlan_datos]       # Asigna la VLAN de datos para la PC conectada detrás del teléfono
+ switchport voice vlan [número_vlan_voz]          # Asigna la VLAN exclusiva donde operará el teléfono IP
+ spanning-tree portfast                           # Enciende el puerto de inmediato, vital para no perder el DHCP inicial
+
+# --- Configuración del Servicio CME (Router) ---
+telephony-service                                 # Ingresa al motor de Call Manager Express
+ max-ephones [cantidad_max]                       # Define el límite de teléfonos físicos permitidos en la red
+ max-dn [cantidad_max]                            # Define el límite de números telefónicos (líneas) a crear
+ ip source-address [ip_local] port 2000           # Indica la IP y puerto (2000) donde el router escucha a los teléfonos
+ auto assign 1 to [cantidad_max]                  # Asigna automáticamente las líneas creadas a los teléfonos que se conecten
+exit
+
+# --- Asignación de Extensiones ---
+ephone-dn 1                                       # Crea el directorio de número (línea) 1
+ number [extensión_ej_101]                        # Le asigna el número de teléfono visible a esa línea
+exit
+ephone-dn 2                                       # Crea el directorio de número (línea) 2
+ number [extensión_ej_102]                        # Le asigna el número de teléfono visible a esa línea
+exit
+
+# --- Enrutamiento de Llamadas por WAN (Dial-Peers) ---
+dial-peer voice [id_regla_ej_200] voip            # Crea una regla de ruteo para enviar llamadas por la red IP
+ description Llamadas hacia Sucursal Remota       # Etiqueta descriptiva de la regla
+ destination-pattern [patrón_de_marcado]          # Define qué números activa la regla (Ej: "2.." atrapa del 200 al 299)
+ session target ipv4:[ip_router_remoto]           # Define a qué IP enviar el paquete de señalización de la llamada
+exit
+```
